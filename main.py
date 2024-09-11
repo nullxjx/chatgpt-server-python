@@ -1,5 +1,4 @@
 import argparse
-import json
 import uvicorn
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
@@ -7,6 +6,7 @@ from loguru import logger
 from openai import AsyncOpenAI
 
 from openai_api_protocol import CompletionRequest, ChatCompletionRequest
+from postprocess import stream_to_generator
 
 client = AsyncOpenAI(
     base_url="http://49.235.138.227:8080/v1",
@@ -19,42 +19,36 @@ app = FastAPI()
 async def root():
     return "pong"
 
-async def stream_to_generator(stream):
-    async for chunk in stream:
-        chunk_dict = chunk.dict(exclude_unset=True)
-        json_chunk = json.dumps(chunk_dict, ensure_ascii=False)
-        yield f"data: {json_chunk}\n\n"
-    yield "data: [DONE]\n\n"
 
 @app.post("/v1/completions")
 async def completions(request: CompletionRequest):
-    logger.info("receive completion request, stream: {}, prompt: {}".format(request.stream, request.prompt))
+    logger.info(f"receive completion request, stream: {request.stream}, prompt: {request.prompt}, stop: {request.stop}")
     stream = request.stream
     if stream is None or not stream:
-        return client.completions.create(model=request.model, prompt=request.prompt,
+        return client.completions.create(model=request.model, prompt=request.prompt, n=request.n,
                                          max_tokens=request.max_tokens, temperature=request.temperature,
-                                         stop=request.stop, stream=False)
+                                         stream=False, stop=request.stop)
     else:
-        stream = await client.completions.create(model=request.model, prompt=request.prompt,
-                                         max_tokens=request.max_tokens, temperature=request.temperature,
-                                         stop=request.stop, stream=True)
-        generator = stream_to_generator(stream)
+        stream = await client.completions.create(model=request.model, prompt=request.prompt, n=request.n,
+                                                 max_tokens=request.max_tokens, temperature=request.temperature,
+                                                 stream=True)
+        generator = stream_to_generator(stream, request.stop)
         return StreamingResponse(generator, media_type="text/event-stream")
 
 
 @app.post("/v1/chat/completions")
 async def chat(request: ChatCompletionRequest):
-    logger.info("receive chat request, stream: {}, messages: {}".format(request.stream, request.messages))
+    logger.info(f"receive completion request, stream: {request.stream}, messages: {request.messages}, stop: {request.stop}")
     stream = request.stream
     if stream is None or not stream:
-        return client.chat.completions.create(model=request.model, messages=request.messages,
+        return client.chat.completions.create(model=request.model, messages=request.messages, n=request.n,
                                               max_tokens=request.max_tokens, temperature=request.temperature,
-                                              stop=request.stop, stream=False)
+                                              stream=False, stop=request.stop)
     else:
-        stream = await client.chat.completions.create(model=request.model, messages=request.messages,
-                                                max_tokens=request.max_tokens, temperature=request.temperature,
-                                                stop=request.stop, stream=True)
-        generator = stream_to_generator(stream)
+        stream = await client.chat.completions.create(model=request.model, messages=request.messages, n=request.n,
+                                                      max_tokens=request.max_tokens, temperature=request.temperature,
+                                                      stream=True)
+        generator = stream_to_generator(stream, request.stop)
         return StreamingResponse(generator, media_type="text/event-stream")
 
 if __name__ == "__main__":
