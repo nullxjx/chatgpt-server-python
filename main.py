@@ -32,7 +32,7 @@ async def completions(request: CompletionRequest):
         stream = await client.completions.create(model=request.model, prompt=request.prompt, n=request.n,
                                                  max_tokens=request.max_tokens, temperature=request.temperature,
                                                  stream=True)
-        generator = stream_to_generator(stream, request.stop)
+        generator = stream_to_generator(stream, request.stop, request.n)
         return StreamingResponse(generator, media_type="text/event-stream")
 
 
@@ -48,7 +48,7 @@ async def chat(request: ChatCompletionRequest):
         stream = await client.chat.completions.create(model=request.model, messages=request.messages, n=request.n,
                                                       max_tokens=request.max_tokens, temperature=request.temperature,
                                                       stream=True)
-        generator = stream_to_generator(stream, request.stop)
+        generator = stream_to_generator(stream, request.stop, request.n)
         return StreamingResponse(generator, media_type="text/event-stream")
 
 if __name__ == "__main__":
